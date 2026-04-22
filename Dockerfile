@@ -19,5 +19,5 @@ RUN chmod +x start.sh
 # Expose Streamlit port (FastAPI runs internally on 8000)
 EXPOSE 7860
 
-# Run the unified startup script
-CMD ["./start.sh"]
+# Run the unified startup script using bash explicitly
+CMD ["bash", "start.sh"]
