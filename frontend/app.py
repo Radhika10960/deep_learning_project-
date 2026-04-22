@@ -53,17 +53,18 @@ class AdvancedViolationDetector:
         hsv = cv2.cvtColor(head_roi, cv2.COLOR_BGR2HSV)
         total_px = head_roi.shape[0] * head_roi.shape[1]
         
-        # Color checks: Broadened black/grey/white ranges for better sensitivity
+        # Color checks: Added Orange and improved Grey for better sensitivity
         white = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 160]), np.array([180, 50, 255])))
         black = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 0]), np.array([180, 255, 75])))
         grey  = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 40]), np.array([180, 30, 160])))
+        orange = cv2.countNonZero(cv2.inRange(hsv, np.array([5, 100, 100]), np.array([25, 255, 255])))
         
-        color_ratio = (yellow + blue + red + white + black + grey) / total_px
-        if color_ratio > 0.45: return True # Raised from 0.30 to avoid hair
+        color_ratio = (yellow + blue + red + white + black + grey + orange) / total_px
+        if color_ratio > 0.35: return True # Balanced threshold
         
-        # Skin mask fallback: Be more strict about what we call a "non-skin" object
+        # Skin mask fallback: Strict but fair
         skin = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 30, 50]), np.array([22, 255, 255])) | cv2.inRange(hsv, np.array([160, 30, 50]), np.array([180, 255, 255])))
-        return (total_px - skin) / total_px > 0.65 # Raised from 0.45
+        return (total_px - skin) / total_px > 0.60 # Balanced from 0.65
 
     def detect(self, image):
         img_h, img_w = image.shape[:2]
@@ -104,10 +105,10 @@ class AdvancedViolationDetector:
                 h_confs = h_res.boxes.conf.cpu().numpy()
                 for b, c, f in zip(h_boxes, h_classes, h_confs):
                     name = self.helmet_model.names[int(c)].lower()
-                    # Lowered threshold to 0.35 to catch "No Helmet" cases more aggressively
+                    # Keep aggressive "No Helmet" override
                     if "no" in name and f > 0.35: no_helmet_boxes.append(b)
-                    # Raised threshold to 0.70 to avoid false positive helmet detections
-                    elif f > 0.70: helmet_boxes.append(b)
+                    # Balanced "With Helmet" threshold (0.55 is the sweet spot)
+                    elif f > 0.55: helmet_boxes.append(b)
             except: pass
 
         person_to_mc = {}
