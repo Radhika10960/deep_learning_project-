@@ -106,9 +106,7 @@ section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
     text-align: center;
     position: relative;
     overflow: hidden;
-    transition: transform .2s;
 }
-.stat-card:hover { transform: translateY(-3px); }
 .stat-card::before {
     content: '';
     position: absolute; top: 0; left: 0; right: 0; height: 3px;
@@ -290,8 +288,18 @@ with tab_detect:
 
             with col_orig:
                 st.markdown('<p class="section-heading">📷 Original Image</p>', unsafe_allow_html=True)
-                image = Image.open(uploaded_file)
-                st.image(image, use_container_width=True)
+                orig_placeholder = st.empty()
+                orig_placeholder.image(Image.open(uploaded_file), use_container_width=True)
+
+            with col_ann:
+                st.markdown('<p class="section-heading">✅ Detection Result</p>', unsafe_allow_html=True)
+                res_placeholder = st.empty()
+                # Initial placeholder to keep layout steady
+                res_placeholder.markdown(
+                    """<div class="upload-hint" style="height:300px; display:flex; align-items:center; justify-content:center;">
+                    Waiting for analysis...</div>""", 
+                    unsafe_allow_html=True
+                )
 
             if run_btn:
                 with st.spinner("🔍 Analyzing image with YOLOv8…"):
@@ -309,13 +317,11 @@ with tab_detect:
                     data = r.json()
                     mc_data = data.get("motorcycles", [])
 
-                    with col_ann:
-                        st.markdown('<p class="section-heading">✅ Detection Result</p>', unsafe_allow_html=True)
-                        img_bytes = base64.b64decode(data["image_base64"])
-                        img_arr   = np.frombuffer(img_bytes, np.uint8)
-                        result_img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
-                        result_img = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
-                        st.image(result_img, use_container_width=True)
+                    img_bytes = base64.b64decode(data["image_base64"])
+                    img_arr   = np.frombuffer(img_bytes, np.uint8)
+                    result_img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+                    result_img = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
+                    res_placeholder.image(result_img, use_container_width=True)
 
                     # ── Metric cards ─────────────────────────────────────────
                     st.markdown('<p class="section-heading">📊 Detection Summary</p>', unsafe_allow_html=True)
