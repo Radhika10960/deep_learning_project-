@@ -68,11 +68,27 @@ class AdvancedViolationDetector:
         return (total_px - skin) / total_px > 0.45
 
     def detect(self, image):
+        # Speed Boost: Resize large images for AI processing
         img_h, img_w = image.shape[:2]
+        max_dim = 640
+        if max(img_h, img_w) > max_dim:
+            scale_f = max_dim / max(img_h, img_w)
+            ai_img = cv2.resize(image, (int(img_w * scale_f), int(img_h * scale_f)))
+        else:
+            scale_f = 1.0
+            ai_img = image
+
         try:
-            base_results = self.base_model(image, verbose=False)[0]
-            boxes, classes, confs = base_results.boxes.xyxy.cpu().numpy(), base_results.boxes.cls.cpu().numpy(), base_results.boxes.conf.cpu().numpy()
-        except: return image, []
+            # Use lower imgsz (320) for significant speedup on limited CPU
+            base_results = self.base_model(ai_img, verbose=False, imgsz=320)[0]
+            boxes = base_results.boxes.xyxy.cpu().numpy()
+            # Scale boxes back to original image size
+            boxes = boxes / scale_f
+            classes = base_results.boxes.cls.cpu().numpy()
+            confs = base_results.boxes.conf.cpu().numpy()
+        except Exception as e:
+            print(f"Base Detection Error: {e}")
+            return image, []
 
         motorcycles, persons = [], []
         for box, cls, conf in zip(boxes, classes, confs):
@@ -83,11 +99,14 @@ class AdvancedViolationDetector:
 
         helmet_boxes, no_helmet_boxes = [], []
         if self.has_helmet_model:
-            h_res = self.helmet_model(image, verbose=False)[0]
-            for b, c, f in zip(h_res.boxes.xyxy.cpu().numpy(), h_res.boxes.cls.cpu().numpy(), h_res.boxes.conf.cpu().numpy()):
-                name = self.helmet_model.names[int(c)].lower()
-                if "no" in name and f > 0.45: no_helmet_boxes.append(b)
-                elif f > 0.55: helmet_boxes.append(b)
+            try:
+                h_res = self.helmet_model(ai_img, verbose=False, imgsz=320)[0]
+                h_boxes = h_res.boxes.xyxy.cpu().numpy() / scale_f
+                for b, c, f in zip(h_boxes, h_res.boxes.cls.cpu().numpy(), h_res.boxes.conf.cpu().numpy()):
+                    name = self.helmet_model.names[int(c)].lower()
+                    if "no" in name and f > 0.45: no_helmet_boxes.append(b)
+                    elif f > 0.55: helmet_boxes.append(b)
+            except: pass
 
         person_to_mc = {}
         for p_box in persons:
