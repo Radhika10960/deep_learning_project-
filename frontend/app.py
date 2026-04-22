@@ -161,7 +161,6 @@ section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
     margin-bottom: .7rem;
     display: flex; align-items: center; justify-content: space-between;
     gap: 1rem;
-    transition: background .15s;
 }
 .hist-row:hover { background: #1e2d48; }
 .hist-row .hr-name  { font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
@@ -271,7 +270,12 @@ tab_detect, tab_history = st.tabs(["🔍  Detection", "📋  History"])
 # TAB 1 – Detection
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_detect:
+    # Initialize session state for results
+    if "last_result" not in st.session_state:
+        st.session_state.last_result = None
+
     if uploaded_file is None:
+        st.session_state.last_result = None # Clear results if file removed
         st.markdown(
             """
             <div class="upload-hint">
@@ -285,24 +289,26 @@ with tab_detect:
     else:
         # ── Image flow ────────────────────────────────────────────────────────
         if file_type == "Image":
-            # Pre-allocate the result container to prevent jumping
-            main_container = st.container()
+            # Display area
+            st.subheader("📷 Image Analysis")
+            col_orig, col_ann = st.columns(2)
             
-            with main_container:
-                col_orig, col_ann = st.columns(2)
-                
-                with col_orig:
-                    st.subheader("📷 Original Image")
-                    st.image(Image.open(uploaded_file), use_container_width=True)
+            with col_orig:
+                st.markdown('<p style="font-size:0.85rem; color:#64748b; margin-bottom:5px;">Original</p>', unsafe_allow_html=True)
+                st.image(Image.open(uploaded_file), use_container_width=True)
 
-                with col_ann:
-                    st.subheader("✅ Detection Result")
-                    res_placeholder = st.empty()
-                    res_placeholder.info("Click 'Run Detection' in the sidebar to start analysis.")
+            with col_ann:
+                st.markdown('<p style="font-size:0.85rem; color:#64748b; margin-bottom:5px;">Detection</p>', unsafe_allow_html=True)
+                res_placeholder = st.empty()
+                
+                # Show results from state if they exist
+                if st.session_state.last_result:
+                    res_placeholder.image(st.session_state.last_result["image"], use_container_width=True)
+                else:
+                    res_placeholder.info("Waiting for analysis...")
 
             if run_btn:
-                res_placeholder.warning("🔍 Analyzing image with YOLOv8... please wait.")
-                
+                res_placeholder.warning("🔍 Analyzing...")
                 uploaded_file.seek(0)
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
                 
@@ -312,61 +318,67 @@ with tab_detect:
                         data = r.json()
                         mc_data = data.get("motorcycles", [])
 
-                        # Process result image
+                        # Decode and save to state
                         img_bytes = base64.b64decode(data["image_base64"])
                         img_arr   = np.frombuffer(img_bytes, np.uint8)
                         result_img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
                         result_img = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
                         
-                        # Update placeholder with result image
+                        st.session_state.last_result = {
+                            "image": result_img,
+                            "data": mc_data
+                        }
+                        # Update placeholder immediately
                         res_placeholder.image(result_img, use_container_width=True)
-
-                        # ── Metric cards ─────────────────────────────────────────
-                        st.divider()
-                        st.subheader("📊 Detection Summary")
-                        total_bikes  = len(mc_data)
-                        violations   = sum(1 for m in mc_data if m["violation"] != "Safe")
-                        safe_riders  = sum(
-                            sum(1 for h in m["helmets"] if h is True)
-                            for m in mc_data
-                        )
-                        triple_ride  = sum(1 for m in mc_data if "Triple" in m.get("violation", ""))
-
-                        c1, c2, c3, c4 = st.columns(4)
-                        for col, label, val, color, icon in [
-                            (c1, "Total Bikes",    total_bikes,  "blue",  "🏍️"),
-                            (c2, "Violations",      violations,  "red",   "🚨"),
-                            (c3, "Safe Riders",     safe_riders, "green", "✅"),
-                            (c4, "Triple Riding",   triple_ride, "warn",  "⚠️"),
-                        ]:
-                            with col:
-                                st.markdown(
-                                    f"""<div class="stat-card {color}">
-                                        <div class="sc-label">{icon} {label}</div>
-                                        <div class="sc-value">{val}</div>
-                                    </div>""",
-                                    unsafe_allow_html=True,
-                                )
-
-                        # ── Detailed log ─────────────────────────────────────────
-                        st.divider()
-                        st.subheader("📋 Detailed Logs")
-                        if total_bikes > 0:
-                            df = pd.DataFrame(mc_data)
-                            df["helmets"] = df["helmets"].apply(
-                                lambda x: ", ".join(["✅ Yes" if v else "❌ No" for v in x])
-                            )
-                            df["violation"] = df["violation"].apply(
-                                lambda v: f"🟢 {v}" if v == "Safe" else f"🔴 {v}"
-                            )
-                            st.dataframe(df, use_container_width=True, hide_index=True)
-                        else:
-                            st.info("No motorcycles detected in this frame.")
+                        st.rerun() # Refresh to show metrics
                     else:
-                        st.error(f"Backend returned error {r.status_code}.")
+                        st.error(f"Backend Error: {r.status_code}")
                 except Exception as e:
-                    st.error(f"⚠️ Connection Error: {str(e)}")
-                    st.stop()
+                    st.error(f"Connection Error: {str(e)}")
+
+            # ── Metrics Display (Persistent) ─────────────────────────────────
+            if st.session_state.last_result:
+                mc_data = st.session_state.last_result["data"]
+                st.divider()
+                st.subheader("📊 Detection Summary")
+                
+                total_bikes  = len(mc_data)
+                violations   = sum(1 for m in mc_data if m["violation"] != "Safe")
+                safe_riders  = sum(
+                    sum(1 for h in m["helmets"] if h is True)
+                    for m in mc_data
+                )
+                triple_ride  = sum(1 for m in mc_data if "Triple" in m.get("violation", ""))
+
+                c1, c2, c3, c4 = st.columns(4)
+                for col, label, val, color, icon in [
+                    (c1, "Total Bikes",    total_bikes,  "blue",  "🏍️"),
+                    (c2, "Violations",      violations,  "red",   "🚨"),
+                    (c3, "Safe Riders",     safe_riders, "green", "✅"),
+                    (c4, "Triple Riding",   triple_ride, "warn",  "⚠️"),
+                ]:
+                    with col:
+                        st.markdown(
+                            f"""<div class="stat-card {color}">
+                                <div class="sc-label">{icon} {label}</div>
+                                <div class="sc-value">{val}</div>
+                            </div>""",
+                            unsafe_allow_html=True,
+                        )
+
+                st.divider()
+                st.subheader("📋 Detailed Logs")
+                if total_bikes > 0:
+                    df = pd.DataFrame(mc_data)
+                    df["helmets"] = df["helmets"].apply(
+                        lambda x: ", ".join(["✅ Yes" if v else "❌ No" for v in x])
+                    )
+                    df["violation"] = df["violation"].apply(
+                        lambda v: f"🟢 {v}" if v == "Safe" else f"🔴 {v}"
+                    )
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No motorcycles detected.")
 
         # ── Video flow ────────────────────────────────────────────────────────
         elif file_type == "Video":
