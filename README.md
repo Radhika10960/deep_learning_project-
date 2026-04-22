@@ -1,3 +1,12 @@
+---
+title: Smart Traffic Violation Detector
+emoji: 🚦
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+---
+
 # Smart Traffic Violation Detector - Production Grade
 
 An end-to-end, realistic, and production-level system designed to parse video and image data, explicitly track motorcycles, and heuristically flag traffic violations (Triple Riding & Missing Helmets) utilizing YOLOv8 and advanced Intersection-Over-Union bounding logic.
