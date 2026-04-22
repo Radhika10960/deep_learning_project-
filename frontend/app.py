@@ -11,7 +11,7 @@ import io
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
-API_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+API_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(
     page_title="Traffic Violation Detector",
@@ -80,7 +80,7 @@ if uploaded_file:
                 uploaded_file.seek(0)
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
                 try:
-                    r = requests.post(f"{API_URL}/predict", files=files, timeout=60)
+                    r = requests.post(f"{API_URL}/predict", files=files, timeout=120)
                     if r.status_code == 200:
                         data = r.json()
                         img_bytes = base64.b64decode(data["image_base64"])
@@ -143,7 +143,7 @@ if uploaded_file:
 st.divider()
 st.subheader("📋 Detection History")
 try:
-    hr = requests.get(f"{API_URL}/history", timeout=5)
+    hr = requests.get(f"{API_URL}/history", timeout=120)
     history = hr.json().get("history", []) if hr.status_code == 200 else []
     for record in history:
         st.markdown(
