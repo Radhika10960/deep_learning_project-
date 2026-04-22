@@ -324,47 +324,49 @@ with tab_detect:
                         # ── Metric cards ─────────────────────────────────────────
                         st.divider()
                         st.subheader("📊 Detection Summary")
-                    total_bikes  = len(mc_data)
-                    violations   = sum(1 for m in mc_data if m["violation"] != "Safe")
-                    # Count individual riders who have helmets across all bikes
-                    safe_riders  = sum(
-                        sum(1 for h in m["helmets"] if h is True)
-                        for m in mc_data
-                    )
-                    triple_ride  = sum(1 for m in mc_data if "Triple" in m.get("violation", ""))
+                        total_bikes  = len(mc_data)
+                        violations   = sum(1 for m in mc_data if m["violation"] != "Safe")
+                        safe_riders  = sum(
+                            sum(1 for h in m["helmets"] if h is True)
+                            for m in mc_data
+                        )
+                        triple_ride  = sum(1 for m in mc_data if "Triple" in m.get("violation", ""))
 
-                    c1, c2, c3, c4 = st.columns(4)
-                    for col, label, val, color, icon in [
-                        (c1, "Total Bikes",    total_bikes,  "blue",  "🏍️"),
-                        (c2, "Violations",      violations,  "red",   "🚨"),
-                        (c3, "Safe Riders",     safe_riders, "green", "✅"),
-                        (c4, "Triple Riding",   triple_ride, "warn",  "⚠️"),
-                    ]:
-                        with col:
-                            st.markdown(
-                                f"""<div class="stat-card {color}">
-                                    <div class="sc-label">{icon} {label}</div>
-                                    <div class="sc-value">{val}</div>
-                                </div>""",
-                                unsafe_allow_html=True,
+                        c1, c2, c3, c4 = st.columns(4)
+                        for col, label, val, color, icon in [
+                            (c1, "Total Bikes",    total_bikes,  "blue",  "🏍️"),
+                            (c2, "Violations",      violations,  "red",   "🚨"),
+                            (c3, "Safe Riders",     safe_riders, "green", "✅"),
+                            (c4, "Triple Riding",   triple_ride, "warn",  "⚠️"),
+                        ]:
+                            with col:
+                                st.markdown(
+                                    f"""<div class="stat-card {color}">
+                                        <div class="sc-label">{icon} {label}</div>
+                                        <div class="sc-value">{val}</div>
+                                    </div>""",
+                                    unsafe_allow_html=True,
+                                )
+
+                        # ── Detailed log ─────────────────────────────────────────
+                        st.divider()
+                        st.subheader("📋 Detailed Logs")
+                        if total_bikes > 0:
+                            df = pd.DataFrame(mc_data)
+                            df["helmets"] = df["helmets"].apply(
+                                lambda x: ", ".join(["✅ Yes" if v else "❌ No" for v in x])
                             )
-
-                    # ── Detailed log ─────────────────────────────────────────
-                    st.divider()
-                    st.subheader("📋 Detailed Logs")
-                    if total_bikes > 0:
-                        df = pd.DataFrame(mc_data)
-                        df["helmets"] = df["helmets"].apply(
-                            lambda x: ", ".join(["✅ Yes" if v else "❌ No" for v in x])
-                        )
-                        df["violation"] = df["violation"].apply(
-                            lambda v: f"🟢 {v}" if v == "Safe" else f"🔴 {v}"
-                        )
-                        st.dataframe(df, use_container_width=True, hide_index=True)
+                            df["violation"] = df["violation"].apply(
+                                lambda v: f"🟢 {v}" if v == "Safe" else f"🔴 {v}"
+                            )
+                            st.dataframe(df, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("No motorcycles detected in this frame.")
                     else:
-                        st.info("No motorcycles detected in this frame.")
-                else:
-                    st.error(f"Backend returned error {r.status_code}.")
+                        st.error(f"Backend returned error {r.status_code}.")
+                except Exception as e:
+                    st.error(f"⚠️ Connection Error: {str(e)}")
+                    st.stop()
 
         # ── Video flow ────────────────────────────────────────────────────────
         elif file_type == "Video":
