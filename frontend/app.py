@@ -59,11 +59,11 @@ class AdvancedViolationDetector:
         grey  = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 40]), np.array([180, 30, 160])))
         
         color_ratio = (yellow + blue + red + white + black + grey) / total_px
-        if color_ratio > 0.30: return True
+        if color_ratio > 0.45: return True # Raised from 0.30 to avoid hair
         
-        # Skin mask fallback
+        # Skin mask fallback: Be more strict about what we call a "non-skin" object
         skin = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 30, 50]), np.array([22, 255, 255])) | cv2.inRange(hsv, np.array([160, 30, 50]), np.array([180, 255, 255])))
-        return (total_px - skin) / total_px > 0.45
+        return (total_px - skin) / total_px > 0.65 # Raised from 0.45
 
     def detect(self, image):
         img_h, img_w = image.shape[:2]
@@ -104,8 +104,10 @@ class AdvancedViolationDetector:
                 h_confs = h_res.boxes.conf.cpu().numpy()
                 for b, c, f in zip(h_boxes, h_classes, h_confs):
                     name = self.helmet_model.names[int(c)].lower()
-                    if "no" in name and f > 0.40: no_helmet_boxes.append(b)
-                    elif f > 0.45: helmet_boxes.append(b)
+                    # Lowered threshold to 0.35 to catch "No Helmet" cases more aggressively
+                    if "no" in name and f > 0.35: no_helmet_boxes.append(b)
+                    # Raised threshold to 0.70 to avoid false positive helmet detections
+                    elif f > 0.70: helmet_boxes.append(b)
             except: pass
 
         person_to_mc = {}
@@ -125,8 +127,8 @@ class AdvancedViolationDetector:
         scale = max(img_w, img_h) / 800
         thickness = max(2, int(scale * 2))
         
-        # Specialized Helmet Overlap Helper (This is what fixed the accuracy issue)
-        def _box_overlaps_helmet(h_box, p_box, thresh=0.40):
+        # Specialized Helmet Overlap Helper (Fixed threshold for small head regions)
+        def _box_overlaps_helmet(h_box, p_box, thresh=0.35):
             h_area = (h_box[2]-h_box[0]) * (h_box[3]-h_box[1])
             if h_area <= 0: return False
             ix1, iy1 = max(p_box[0], h_box[0]), max(p_box[1], h_box[1])
