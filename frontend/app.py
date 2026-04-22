@@ -46,6 +46,8 @@ st.markdown(
 }
 
 /* ── App-wide resets ─────────────────────────────────────── */
+html { overflow-y: scroll !important; }
+
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
     background-color: var(--bg) !important;
@@ -179,7 +181,6 @@ section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
     border-radius: 8px !important;
     font-weight: 600 !important;
     padding: .5rem 1.2rem !important;
-    transition: opacity .2s !important;
 }
 .stButton > button:hover { opacity: 0.88 !important; }
 
