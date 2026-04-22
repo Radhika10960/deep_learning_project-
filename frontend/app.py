@@ -285,47 +285,45 @@ with tab_detect:
     else:
         # ── Image flow ────────────────────────────────────────────────────────
         if file_type == "Image":
-            col_orig, col_ann = st.columns(2, gap="large")
+            # Pre-allocate the result container to prevent jumping
+            main_container = st.container()
+            
+            with main_container:
+                col_orig, col_ann = st.columns(2)
+                
+                with col_orig:
+                    st.subheader("📷 Original Image")
+                    st.image(Image.open(uploaded_file), use_container_width=True)
 
-            with col_orig:
-                st.markdown('<p class="section-heading">📷 Original Image</p>', unsafe_allow_html=True)
-                orig_placeholder = st.empty()
-                orig_placeholder.image(Image.open(uploaded_file), use_container_width=True)
-
-            with col_ann:
-                st.markdown('<p class="section-heading">✅ Detection Result</p>', unsafe_allow_html=True)
-                res_placeholder = st.empty()
-                # Initial placeholder to keep layout steady
-                res_placeholder.markdown(
-                    """<div class="upload-hint" style="height:300px; display:flex; align-items:center; justify-content:center;">
-                    Waiting for analysis...</div>""", 
-                    unsafe_allow_html=True
-                )
+                with col_ann:
+                    st.subheader("✅ Detection Result")
+                    res_placeholder = st.empty()
+                    res_placeholder.info("Click 'Run Detection' in the sidebar to start analysis.")
 
             if run_btn:
-                with st.spinner("🔍 Analyzing image with YOLOv8…"):
-                    uploaded_file.seek(0)
-                    files = {
-                        "file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)
-                    }
-                    try:
-                        r = requests.post(f"{API_URL}/predict", files=files, timeout=60)
-                    except requests.exceptions.ConnectionError:
-                        st.error("⚠️ Could not reach the backend. Make sure it is running on port 8000.")
-                        st.stop()
+                res_placeholder.warning("🔍 Analyzing image with YOLOv8... please wait.")
+                
+                uploaded_file.seek(0)
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                
+                try:
+                    r = requests.post(f"{API_URL}/predict", files=files, timeout=60)
+                    if r.status_code == 200:
+                        data = r.json()
+                        mc_data = data.get("motorcycles", [])
 
-                if r.status_code == 200:
-                    data = r.json()
-                    mc_data = data.get("motorcycles", [])
+                        # Process result image
+                        img_bytes = base64.b64decode(data["image_base64"])
+                        img_arr   = np.frombuffer(img_bytes, np.uint8)
+                        result_img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+                        result_img = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
+                        
+                        # Update placeholder with result image
+                        res_placeholder.image(result_img, use_container_width=True)
 
-                    img_bytes = base64.b64decode(data["image_base64"])
-                    img_arr   = np.frombuffer(img_bytes, np.uint8)
-                    result_img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
-                    result_img = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
-                    res_placeholder.image(result_img, use_container_width=True)
-
-                    # ── Metric cards ─────────────────────────────────────────
-                    st.markdown('<p class="section-heading">📊 Detection Summary</p>', unsafe_allow_html=True)
+                        # ── Metric cards ─────────────────────────────────────────
+                        st.divider()
+                        st.subheader("📊 Detection Summary")
                     total_bikes  = len(mc_data)
                     violations   = sum(1 for m in mc_data if m["violation"] != "Safe")
                     # Count individual riders who have helmets across all bikes
@@ -352,7 +350,8 @@ with tab_detect:
                             )
 
                     # ── Detailed log ─────────────────────────────────────────
-                    st.markdown('<p class="section-heading">📋 Detailed Logs</p>', unsafe_allow_html=True)
+                    st.divider()
+                    st.subheader("📋 Detailed Logs")
                     if total_bikes > 0:
                         df = pd.DataFrame(mc_data)
                         df["helmets"] = df["helmets"].apply(
