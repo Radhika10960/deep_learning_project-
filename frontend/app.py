@@ -53,15 +53,13 @@ class AdvancedViolationDetector:
         hsv = cv2.cvtColor(head_roi, cv2.COLOR_BGR2HSV)
         total_px = head_roi.shape[0] * head_roi.shape[1]
         
-        # Color checks
-        yellow = cv2.countNonZero(cv2.inRange(hsv, np.array([18, 100, 100]), np.array([38, 255, 255])))
-        blue = cv2.countNonZero(cv2.inRange(hsv, np.array([90, 80, 60]), np.array([140, 255, 255])))
-        red = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 120, 80]), np.array([10, 255, 255])) | cv2.inRange(hsv, np.array([160, 120, 80]), np.array([180, 255, 255])))
-        white = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 180]), np.array([180, 40, 255])))
-        black = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 0]), np.array([180, 255, 55])))
+        # Color checks: Broadened black/grey/white ranges for better sensitivity
+        white = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 160]), np.array([180, 50, 255])))
+        black = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 0]), np.array([180, 255, 75])))
+        grey  = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 0, 40]), np.array([180, 30, 160])))
         
-        color_ratio = (yellow + blue + red + white + black) / total_px
-        if color_ratio > 0.35: return True
+        color_ratio = (yellow + blue + red + white + black + grey) / total_px
+        if color_ratio > 0.30: return True
         
         # Skin mask fallback
         skin = cv2.countNonZero(cv2.inRange(hsv, np.array([0, 30, 50]), np.array([22, 255, 255])) | cv2.inRange(hsv, np.array([160, 30, 50]), np.array([180, 255, 255])))
@@ -90,22 +88,33 @@ class AdvancedViolationDetector:
             print(f"Base Detection Error: {e}")
             return image, []
 
-        motorcycles, persons = [], []
+        motorcycles_raw, persons = [], []
         for box, cls, conf in zip(boxes, classes, confs):
             if conf < 0.3: continue
             name = self.base_model.names[int(cls)].lower()
-            if name == "motorcycle": motorcycles.append((box, float(conf)))
+            if name == "motorcycle": motorcycles_raw.append((box, float(conf)))
             elif name == "person": persons.append(box)
+
+        # Apply simple NMS to motorcycles to avoid double-counting
+        motorcycles = []
+        for i, (box_i, conf_i) in enumerate(motorcycles_raw):
+            is_dup = False
+            for j, (box_j, conf_j) in enumerate(motorcycles):
+                if self.calculate_iou(box_i, box_j) > 0.6:
+                    is_dup = True
+                    break
+            if not is_dup: motorcycles.append((box_i, conf_i))
 
         helmet_boxes, no_helmet_boxes = [], []
         if self.has_helmet_model:
             try:
                 h_res = self.helmet_model(ai_img, verbose=False, imgsz=320)[0]
                 h_boxes = h_res.boxes.xyxy.cpu().numpy() / scale_f
-                for b, c, f in zip(h_boxes, h_res.boxes.cls.cpu().numpy(), h_res.boxes.conf.cpu().numpy()):
+                h_confs = h_res.boxes.conf.cpu().numpy()
+                for b, c, f in zip(h_boxes, h_res.boxes.cls.cpu().numpy(), h_confs):
                     name = self.helmet_model.names[int(c)].lower()
-                    if "no" in name and f > 0.45: no_helmet_boxes.append(b)
-                    elif f > 0.55: helmet_boxes.append(b)
+                    if "no" in name and f > 0.40: no_helmet_boxes.append(b)
+                    elif f > 0.45: helmet_boxes.append(b)
             except: pass
 
         person_to_mc = {}
