@@ -66,36 +66,26 @@ class AdvancedViolationDetector:
         return (total_px - skin) / total_px > 0.45
 
     def detect(self, image):
-        # Speed Boost: Resize large images for AI processing
         img_h, img_w = image.shape[:2]
-        max_dim = 640
-        if max(img_h, img_w) > max_dim:
-            scale_f = max_dim / max(img_h, img_w)
-            ai_img = cv2.resize(image, (int(img_w * scale_f), int(img_h * scale_f)))
-        else:
-            scale_f = 1.0
-            ai_img = image
-
+        
+        # No resizing - processing at full resolution for maximum accuracy
         try:
-            # Use lower imgsz (320) for significant speedup on limited CPU
-            base_results = self.base_model(ai_img, verbose=False, imgsz=320)[0]
-            boxes = base_results.boxes.xyxy.cpu().numpy()
-            # Scale boxes back to original image size
-            boxes = boxes / scale_f
-            classes = base_results.boxes.cls.cpu().numpy()
-            confs = base_results.boxes.conf.cpu().numpy()
+            base_results = self.base_model(image, verbose=False)[0]
+            boxes_raw = base_results.boxes.xyxy.cpu().numpy()
+            classes_raw = base_results.boxes.cls.cpu().numpy()
+            confs_raw = base_results.boxes.conf.cpu().numpy()
         except Exception as e:
             print(f"Base Detection Error: {e}")
             return image, []
 
         motorcycles_raw, persons = [], []
-        for box, cls, conf in zip(boxes, classes, confs):
+        for box, cls, conf in zip(boxes_raw, classes_raw, confs_raw):
             if conf < 0.3: continue
             name = self.base_model.names[int(cls)].lower()
             if name == "motorcycle": motorcycles_raw.append((box, float(conf)))
             elif name == "person": persons.append(box)
 
-        # Apply simple NMS to motorcycles to avoid double-counting
+        # NMS for motorcycles
         motorcycles = []
         for i, (box_i, conf_i) in enumerate(motorcycles_raw):
             is_dup = False
@@ -108,10 +98,11 @@ class AdvancedViolationDetector:
         helmet_boxes, no_helmet_boxes = [], []
         if self.has_helmet_model:
             try:
-                h_res = self.helmet_model(ai_img, verbose=False, imgsz=320)[0]
-                h_boxes = h_res.boxes.xyxy.cpu().numpy() / scale_f
+                h_res = self.helmet_model(image, verbose=False)[0]
+                h_boxes = h_res.boxes.xyxy.cpu().numpy()
+                h_classes = h_res.boxes.cls.cpu().numpy()
                 h_confs = h_res.boxes.conf.cpu().numpy()
-                for b, c, f in zip(h_boxes, h_res.boxes.cls.cpu().numpy(), h_confs):
+                for b, c, f in zip(h_boxes, h_classes, h_confs):
                     name = self.helmet_model.names[int(c)].lower()
                     if "no" in name and f > 0.40: no_helmet_boxes.append(b)
                     elif f > 0.45: helmet_boxes.append(b)
@@ -134,6 +125,15 @@ class AdvancedViolationDetector:
         scale = max(img_w, img_h) / 800
         thickness = max(2, int(scale * 2))
         
+        # Specialized Helmet Overlap Helper (This is what fixed the accuracy issue)
+        def _box_overlaps_helmet(h_box, p_box, thresh=0.40):
+            h_area = (h_box[2]-h_box[0]) * (h_box[3]-h_box[1])
+            if h_area <= 0: return False
+            ix1, iy1 = max(p_box[0], h_box[0]), max(p_box[1], h_box[1])
+            ix2, iy2 = min(p_box[2], h_box[2]), min(p_box[3], h_box[3])
+            inter = max(0, ix2-ix1) * max(0, iy2-iy1)
+            return (inter / h_area) > thresh
+
         for m_idx, (m_box, mc_conf) in enumerate(motorcycles):
             riders = person_to_mc.get(m_idx, [])
             if not riders: continue
@@ -142,8 +142,8 @@ class AdvancedViolationDetector:
             helmet_status = []
             for p_box in riders:
                 if self.has_helmet_model:
-                    has_helmet = any(self.calculate_iou(h, p_box) > 0.3 for h in helmet_boxes)
-                    if has_helmet and any(self.calculate_iou(h, p_box) > 0.3 for h in no_helmet_boxes): has_helmet = False
+                    has_helmet = any(_box_overlaps_helmet(h, p_box) for h in helmet_boxes)
+                    if has_helmet and any(_box_overlaps_helmet(h, p_box) for h in no_helmet_boxes): has_helmet = False
                 else: has_helmet = self._heuristic_helmet(image, p_box)
                 helmet_status.append(has_helmet)
                 p_color = (0, 200, 255) if has_helmet else (0, 0, 230)
