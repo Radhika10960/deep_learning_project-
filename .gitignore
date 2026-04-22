@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+.env
+.venv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local DB (auto-generated at runtime)
+history.db
+
+# Dataset (large, download via prepare_dataset.py)
+dataset/
+
+# YOLO training runs (large output folders)
+# Keep runs/detect/helmet_yolov8n/weights/best.pt — track that file
+runs/detect/*/weights/last.pt
+runs/detect/*/weights/*.pt.tmp
+runs/detect/*/train*/
+runs/detect/*/val*/
+runs/detect/**/results.csv
+runs/detect/**/results.png
+
+# HuggingFace cache
+runs/detect/**/models--*/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
