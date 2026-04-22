@@ -218,13 +218,17 @@ with tab_detect:
 
             if run_btn:
                 with st.spinner("🧠 AI Analysis in progress..."):
+                    uploaded_file.seek(0) # Reset file pointer for AI to read
                     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
                     img = cv2.imdecode(file_bytes, 1)
-                    ann_img, data = detector.detect(img)
-                    st.session_state.last_result = {"image": cv2.cvtColor(ann_img, cv2.COLOR_BGR2RGB), "data": data}
-                    save_detection(uploaded_file.name, "image", data)
-                    res_area.image(st.session_state.last_result["image"], use_container_width=True)
-                    st.rerun()
+                    if img is not None:
+                        ann_img, data = detector.detect(img)
+                        st.session_state.last_result = {"image": cv2.cvtColor(ann_img, cv2.COLOR_BGR2RGB), "data": data}
+                        save_detection(uploaded_file.name, "image", data)
+                        res_area.image(st.session_state.last_result["image"], use_container_width=True)
+                        st.rerun()
+                    else:
+                        st.error("Failed to decode image. Please try another file.")
 
             if "last_result" in st.session_state and st.session_state.last_result:
                 mc_data = st.session_state.last_result["data"]
